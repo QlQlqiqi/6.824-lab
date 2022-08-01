@@ -1,2 +1,7 @@
-# 6.824-lab
-记录自己做 6.824 lab的过程
+# [6.824 Spring 2020](http://nil.lcs.mit.edu/6.824/2020/schedule.html)
+
+---
+
+
+
+[lab1: MapReduce](./lab1)
