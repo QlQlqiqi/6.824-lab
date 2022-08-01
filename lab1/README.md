@@ -2,15 +2,13 @@
 
 ![image-20220801101250074](https://s2.loli.net/2022/08/01/SkC1BceMjr4ypDV.png)
 
-<center style="color: #888; font-size: 12px;">MapReduce Paper</center>
+<p style="text-align: center; color: #888; font-size: 12px;">MapReduce Paper</p>
 
 ##### 工作整体流程
 
 1. 一个 master 和多个 worker 并行工作，master 负责调度，worker 负责执行。
 2. master 将输入任务分成 M 个任务（这个 lab 是多少个输入文件就是多少个任务），worker 获取其中一个任务，执行完毕后通知 master 该任务完成。
 3. 待所有 map 任务完成后，master 将 map 阶段的结果转成 reduce 阶段的输入，然后交给 worker 执行，执行完毕后告诉 master 结果。
-
-
 
 ##### 一些细节
 
