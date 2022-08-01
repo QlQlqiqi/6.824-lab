@@ -2,7 +2,7 @@
 
 ![image-20220801101250074](https://s2.loli.net/2022/08/01/SkC1BceMjr4ypDV.png)
 
-<p style="text-align: center; color: #888; font-size: 12px;">MapReduce Paper</p>
+<center style="align: center; color: #888; font-size: 12px;">MapReduce Paper</center>
 
 ##### 工作整体流程
 
