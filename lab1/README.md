@@ -14,29 +14,40 @@
 
 细节 lab 已经交代很清楚了（rules、hints），这里说一下自己做的时候一些问题
 
-
-
 > 问题：reduce 阶段不同的输入文件可能含有相同的 key
 
 刚开始想着是，map 阶段每个 worker 产生的中间键值对存成一个文件，比如：mr-1、mr-2、mr-3。但是这样会导致不同的文件中含有相同 key，进入 reduce 阶段前必须进行合并。如果进行合并的话，合并程序会成为性能瓶颈，在分布式中显然不合理。
-
-
 
 > 解决：map 阶段将产生的键值对分区
 
 如论文中的图画的一样，map 阶段每个任务不能只产生一个文件，产生 nReduce（reduce 并行数）个文件，如：mr-X-Y（X 为任务序号，Y 为键值对 hash(key) % nReduce），这样最终产生 M * R 个文件。master 将 Y 相等的文件放在一起，作为 reduce 阶段的任务。
 
-
-
 当然中间也遇到了很多奇怪的 bug（rpc connection refused 等），不过都是一些编码上的错误。
-
-
 
 ##### lab
 
-拷贝下课程代码，替换 mr 包下文件即可
+1. 拉取代码
 
+```bash
+git clone git://g.csail.mit.edu/6.824-golabs-2020 6.824
+```
 
+2. 切换路径
+
+```bash
+cd ./6.824/src
+```
+
+3. 替换 ```./mr``` 目录为本仓库 [mr 目录](./mr)
+
+3. 切换路径并测试
+
+```bash
+cd ./main
+sh test-mr.sh
+```
+
+4. 得到 pass all tests，结束
 
 ##### 不足之处
 
