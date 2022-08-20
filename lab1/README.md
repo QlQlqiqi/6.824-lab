@@ -1,4 +1,4 @@
-# [MapReduce](http://nil.lcs.mit.edu/6.824/2020/labs/lab-mr.html)
+# [MapReduce 2020](http://nil.lcs.mit.edu/6.824/2020/labs/lab-mr.html)
 
 ![image-20220801101250074](https://s2.loli.net/2022/08/01/SkC1BceMjr4ypDV.png)
 
