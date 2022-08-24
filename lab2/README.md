@@ -1,6 +1,6 @@
-### Raft Paper Notice
+### [Raft 2021](http://nil.csail.mit.edu/6.824/2021/labs/lab-raft.html)
 
-> 用 ./raft 文件夹覆盖即可
+> 用 ./raft 文件夹覆盖相应文件夹即可
 
 
 
