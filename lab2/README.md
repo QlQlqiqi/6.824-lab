@@ -1,9 +1,9 @@
-### [Raft 2021](http://nil.csail.mit.edu/6.824/2021/labs/lab-raft.html)
+### Raft 2021
 
+> http://nil.csail.mit.edu/6.824/2021/labs/lab-raft.html
+>
 > 用 ./raft 文件夹覆盖相应文件夹即可
-
-
-
+>
 > 并没有什么好记录的，只能说跟着敲一遍就会了
 
 期间遇到很多问题，最终发现都是因为自己没有理解 raft，并且在处理并发问题时没有考虑全面。
