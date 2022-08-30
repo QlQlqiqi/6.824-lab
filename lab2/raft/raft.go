@@ -34,6 +34,7 @@ const candidate = 1
 const follower = 2
 
 const rpcRetryTimes = 5
+const rpcRetryInterval = 50 * time.Millisecond
 
 // ApplyMsg
 // as each Raft peer becomes aware that successive log entries are
@@ -109,6 +110,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	// 因为有可能已经执行了 i + 1 位置的日志项，
 	// 然后才设置 i 位置的快照
 	if lastIncludedIndex <= rf.log.lastIndex() &&
+		lastIncludedIndex >= rf.log.startIndex() &&
 		rf.log.entry(lastIncludedIndex).Term == lastIncludedTerm {
 		rf.log.cut(lastIncludedIndex)
 	} else {
@@ -171,7 +173,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.persistL()
 
 	index := rf.log.lastIndex()
-	DPrintf("\n\n%v: state %v: Start with index %v: %v\n\n\n", rf.me, rf.state, index, entry)
+	DPrintf("%v: state %v: Start with index %v: %v\n", rf.me, rf.state, index, entry)
+	//log.Printf("%v: state %v: Start with index %v: %v\n", rf.me, rf.state, index, entry)
 
 	rf.sendAppendEntriesAllL(false)
 
@@ -191,6 +194,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 func (rf *Raft) Kill() {
 	atomic.StoreInt32(&rf.dead, 1)
 	// Your code here, if desired.
+	rf.signalApplierL()
 }
 
 func (rf *Raft) killed() bool {
@@ -248,20 +252,15 @@ func (rf *Raft) applier() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	if rf.lastApplied < rf.log.startIndex() {
+		rf.lastApplied = rf.log.startIndex()
+	}
+
 	for !rf.killed() {
-		if rf.lastApplied < rf.log.startIndex() {
-			rf.lastApplied = rf.log.startIndex()
-		}
 		// 发送 snapshot
 		if rf.waitingNoticeSnapshot != nil {
 			applyMsg := *rf.waitingNoticeSnapshot
 			rf.waitingNoticeSnapshot = nil
-			//rf.log = *mkLogEmpty()
-			//rf.log.Log[0].Term = applyMsg.SnapshotTerm
-			//rf.log.Index = applyMsg.SnapshotIndex
-			//rf.snapshot = applyMsg.Snapshot
-			//rf.persistL()
-			//rf.lastApplied = applyMsg.SnapshotIndex
 			DPrintf("%v: apply snapshot index %v term %v to applyCh\n",
 				rf.me, applyMsg.SnapshotIndex, applyMsg.SnapshotTerm)
 			rf.mu.Unlock()
@@ -277,6 +276,8 @@ func (rf *Raft) applier() {
 				Command:      rf.log.entry(rf.lastApplied).Command,
 				CommandIndex: rf.lastApplied,
 			}
+			//log.Printf("%v: apply command %v with index %v and send it to applyCh\n",
+			//	rf.me, applyMsg.Command, applyMsg.CommandIndex)
 			DPrintf("%v: apply command %v with index %v and send it to applyCh\n",
 				rf.me, applyMsg.Command, applyMsg.CommandIndex)
 			rf.mu.Unlock()

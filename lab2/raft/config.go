@@ -138,7 +138,7 @@ func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
 	v := m.Command
 	for j := 0; j < len(cfg.logs); j++ {
 		if old, oldok := cfg.logs[j][m.CommandIndex]; oldok && old != v {
-			log.Printf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
+			//log.Printf("%v: log %v; server %v\n", i, cfg.logs[i], cfg.logs[j])
 			// some server has already committed a different value for this entry!
 			err_msg = fmt.Sprintf("commit index=%v server=%v %v != server=%v %v",
 				m.CommandIndex, i, m.Command, j, old)
@@ -182,7 +182,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	lastApplied := 0
 	for m := range applyCh {
 		if m.SnapshotValid {
-			DPrintf("test: InstallSnapshot %v %v\n", m.SnapshotIndex, lastApplied)
+			//DPrintf("Installsnapshot %v %v\n", m.SnapshotIndex, lastApplied)
 			cfg.mu.Lock()
 			if cfg.rafts[i].CondInstallSnapshot(m.SnapshotTerm,
 				m.SnapshotIndex, m.Snapshot) {
@@ -198,7 +198,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			}
 			cfg.mu.Unlock()
 		} else if m.CommandValid && m.CommandIndex > lastApplied {
-			DPrintf("test: apply %v lastApplied %v\n", m.CommandIndex, lastApplied)
+			//DPrintf("apply %v lastApplied %v\n", m.CommandIndex, lastApplied)
 			cfg.mu.Lock()
 			err_msg, prevok := cfg.checkLogs(i, m)
 			cfg.mu.Unlock()

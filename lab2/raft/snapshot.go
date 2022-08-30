@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 // InstallSnapshotArgs 是 InstallSnapshot RPC 参数类型
 type InstallSnapshotArgs struct {
 	Term              int
@@ -59,10 +61,13 @@ func (rf *Raft) sendSnapshotL(peer int) {
 	DPrintf("%v: sendSnapshotL to %v args %v\n", rf.me, peer, args)
 
 	go func() {
+		cnt := 0
 	retry:
+		cnt++
 		var reply InstallSnapshotReply
 		ok := rf.sendInstallSnapshot(peer, &args, &reply)
-		if !ok {
+		if !ok && cnt < rpcRetryTimes {
+			time.Sleep(rpcRetryInterval)
 			goto retry
 		}
 		rf.mu.Lock()

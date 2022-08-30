@@ -1,5 +1,9 @@
 package raft
 
+import (
+	"fmt"
+)
+
 // Log 是 raft 中的日志
 type Log struct {
 	// 第一个 Log 的日志项的前一个日志项的索引
@@ -13,6 +17,21 @@ type Log struct {
 type Entry struct {
 	Term    int
 	Command interface{}
+}
+
+func (l *Log) toString() string {
+	str := ""
+	cnt := 0
+	var item *Entry
+	for i := maxInt(l.startIndex(), l.lastIndex()-10); i <= l.lastIndex(); i++ {
+		item = l.entry(i)
+		str += fmt.Sprintf("{index: %v, term: %v, command: %v} ", i, item.Term, item.Command)
+		cnt++
+		if cnt%3 == 0 {
+			str += "\n"
+		}
+	}
+	return str
 }
 
 // 产生一个空的 Log
@@ -53,7 +72,7 @@ func (l *Log) append(entry *Entry) {
 	l.Log = append(l.Log, *entry)
 }
 
-// 用 entries 替换从 start 开始后面的日志项
+// 用 entries 替换从 start(included) 开始后面的日志项
 func (l *Log) delAndOverlap(start int, entries []Entry) {
 	l.Log = l.Log[:start-l.Index]
 	l.Log = append(l.Log, entries...)

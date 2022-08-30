@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"time"
 )
 
 // 同步日志时，如果日志之间 index 差距大于 maxLogDivIndex
@@ -61,10 +62,27 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	DPrintf("%v: (term: %v) AppendEntries %v\n", rf.me, rf.currentTerm, args.toString())
 
+	// 可能是旧的 appendEntries （这个 bug 找了好久）
+	// 这里的旧是因网络延迟等问题，导致此次收到的 appendEntries 是曾经发送的
+	// 这里是用 command 是否相等来判断的，真实情况下只能另取他法
 	if args.PrevLogIndex <= rf.log.lastIndex() &&
 		args.PrevLogIndex >= rf.log.startIndex() &&
 		args.PrevLogTerm == rf.log.entry(args.PrevLogIndex).Term {
-		rf.log.delAndOverlap(args.PrevLogIndex+1, args.Entries)
+		entries := args.Entries
+		i := 0
+		for ; i < len(entries) && i+args.PrevLogIndex+1 <= rf.log.lastIndex(); i++ {
+			entry := rf.log.entry(i + args.PrevLogIndex + 1)
+			if entries[i].Term != entry.Term || entries[i].Command != entry.Command {
+				break
+			}
+		}
+		// 曾经已经执行的旧的 appendEntries，即：此时的 log 包含 entries 中所有的日志项
+		if i == len(entries) {
+		} else {
+			rf.log.delAndOverlap(args.PrevLogIndex+i+1, entries[i:])
+		}
+		//log.Printf("%v: AppendEntries log is: %v\n", rf.me, rf.log.toString())
+		DPrintf("%v: AppendEntries log is: %v\n", rf.me, rf.log.toString())
 		rf.persistL()
 		reply.Success = true
 	}
@@ -75,6 +93,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			args.LeaderCommit <= rf.log.lastIndex() &&
 			rf.log.entry(args.LeaderCommit).Term == rf.currentTerm {
 			rf.commitIndex = minInt(rf.log.lastIndex(), args.LeaderCommit)
+			//log.Printf("%v: commit change to %v %v(AppendEntries)\n",
+			//	rf.me, rf.commitIndex, rf.log.entry(rf.commitIndex))
+			//log.Printf("%v: log is %v\n",
+			//	rf.me, rf.log.slice(maxInt(rf.log.startIndex(), rf.log.lastIndex()-10), rf.log.lastIndex()-1))
 			// 每个 peer 都要发送数据（debug 这个浪费了我很长时间）
 			rf.signalApplierL()
 		}
@@ -130,6 +152,7 @@ func (rf *Raft) sendAppendEntriesL(peer int) {
 			defer rf.mu.Unlock()
 			rf.processAppendReplyL(peer, &args, &reply)
 		} else if cnt < rpcRetryTimes {
+			time.Sleep(rpcRetryInterval)
 			// 如果 rpc 失败，需要立刻重新发送
 			goto retry
 		}
@@ -158,12 +181,12 @@ func (rf *Raft) processAppendReplyL(peer int, args *AppendEntriesArgs, reply *Ap
 			rf.sendSnapshotL(peer)
 		}
 		//rf.sendAppendEntriesL(peer)
-		return
+	} else {
+		// 更新 nextIndex 和 matchIndex
+		nextIndex := args.PrevLogIndex + len(args.Entries) + 1
+		rf.nextIndex[peer] = maxInt(rf.nextIndex[peer], nextIndex)
+		rf.matchIndex[peer] = maxInt(rf.matchIndex[peer], nextIndex-1)
 	}
-	// 更新 nextIndex 和 matchIndex
-	nextIndex := args.PrevLogIndex + len(args.Entries) + 1
-	rf.nextIndex[peer] = maxInt(rf.nextIndex[peer], nextIndex)
-	rf.matchIndex[peer] = maxInt(rf.matchIndex[peer], nextIndex-1)
 	// 更新 commitIndex
 	rf.advanceCommitL()
 }
@@ -179,16 +202,24 @@ func (rf *Raft) advanceCommitL() {
 			continue
 		}
 		cnt := 1
+		//matchPeers := make([]int, 0, len(rf.peers))
 		for peer := range rf.peers {
 			if peer != rf.me && rf.matchIndex[peer] >= index {
 				cnt++
+				//matchPeers = append(matchPeers, peer)
 			}
 		}
 		if cnt > len(rf.peers)/2 {
 			rf.commitIndex = index
-			DPrintf("%v: commit %v\n", rf.me, index)
-		} else {
-			break
+			//log.Printf("%v: match from: %v", rf.me, rf.me)
+			//for _, peer := range matchPeers {
+			//	log.Printf(" %v", peer)
+			//}
+			//log.Printf("\n")
+			//log.Printf("%v: commit change to %v %v(advanceCommitL)\n", rf.me, index, rf.log.entry(index))
+			//log.Printf("%v: log is %v\n",
+			//	rf.me, rf.log.slice(maxInt(rf.log.startIndex(), rf.log.lastIndex()-10), rf.log.lastIndex()-1))
+			DPrintf("%v: commit change to %v\n", rf.me, index)
 		}
 	}
 	rf.signalApplierL()

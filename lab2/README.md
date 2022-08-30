@@ -1,16 +1,12 @@
-### Raft 2021
+### Raft Paper Notice
 
-> http://nil.csail.mit.edu/6.824/2021/labs/lab-raft.html
->
-> 用 ./raft 文件夹覆盖相应文件夹即可
->
-> 并没有什么好记录的，只能说跟着敲一遍就会了
+> 网络延迟等问题是最大的问题
 
 期间遇到很多问题，最终发现都是因为自己没有理解 raft，并且在处理并发问题时没有考虑全面。
 
 
 
-
+##### AppendEntries、CondInstallSnapshot 中一定要判断请求是否是“旧”的：因网络延迟、重发等原因，使得请求是曾经已经执行过的，或曾经已经执行过的请求包含该“旧”的请求！！！
 
 
 
@@ -24,9 +20,13 @@
 
 
 
+
+
 ##### election
 
 - 从 follower 开始，增加 term，并变为 candidate。（$5.2）
+
+
 
 ##### log replication
 
@@ -34,9 +34,13 @@
 
 - 当 leader 和 follower 日志不一致时，找到最新的两个日志一致的地方，删除 follower 中在该日志之后的日志，并将 leader 在该地方之后同步复制到 follower 中。($5.3)
 
+
+
 ##### follower
 
 - 长时间没有收到来自 leader 的 heartbeats 或给 candidate 投票，则开始 election；否则保持 follower 状态。（$5.2）
+
+
 
 ##### candidate
 
@@ -47,6 +51,8 @@
   - 接收到其他服务器的 AppendEntries RPC。如果该 leader's term 小于该 candidate's term，则拒绝，该 leader 会转变为 follower。
 
   - 一段时间内仍没有 candidate 赢得选举。等待一定时间后发起新一轮 election。
+
+
 
 
 ##### leader

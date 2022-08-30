@@ -39,12 +39,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.VoteGranted = false
 	reply.Term = maxInt(args.Term, rf.currentTerm)
 
-	if args.Term < rf.currentTerm {
-		return
-	}
 	// for all servers
 	if args.Term > rf.currentTerm {
 		rf.newTermL(args.Term)
+	}
+	if args.Term < rf.currentTerm {
+		return
 	}
 
 	upToDate := args.LastLogTerm > rf.log.lastTerm() ||
@@ -146,6 +146,7 @@ retry:
 
 	if !ok {
 		if cnt < rpcRetryTimes {
+			time.Sleep(rpcRetryInterval)
 			goto retry
 		}
 		return
@@ -193,31 +194,12 @@ func (rf *Raft) becomeLeaderL() {
 	rf.state = leader
 	rf.persistL()
 
+	//log.Printf("\n\n%v: become leader in term %v\n\n\n", rf.me, rf.currentTerm)
 	DPrintf("\n\n%v: become leader in term %v\n\n\n", rf.me, rf.currentTerm)
-
-	// 开始发送 heartbeats
-	//rf.sendAppendEntriesAllL(true)
-	//go rf.sendHeartBeats()
 
 	// 初始化 nextIndex 和 matchIndex
 	for peer := range rf.peers {
 		rf.nextIndex[peer] = rf.log.lastIndex() + 1
-		rf.matchIndex[peer] = rf.log.startIndex()
+		rf.matchIndex[peer] = maxInt(rf.matchIndex[peer], rf.log.startIndex())
 	}
 }
-
-// 向每个 peer 发送 heartbeats
-//func (rf *Raft) sendHeartBeats() {
-//	for {
-//		rf.mu.Lock()
-//		// 当前是 leader
-//		if rf.state == leader {
-//			rf.sendAppendEntriesAllL(true)
-//			time.Sleep(heartBeatsInterval)
-//			rf.mu.Unlock()
-//			continue
-//		}
-//		rf.mu.Unlock()
-//		return
-//	}
-//}
