@@ -63,8 +63,8 @@ func (l *Log) entry(index int) *Entry {
 }
 
 // 子区间 [start, end)
-func (l *Log) slice(start int, end int) []Entry {
-	return l.Log[start-l.Index : end-l.Index]
+func (l *Log) slice(start int) []Entry {
+	return l.Log[start-l.Index:]
 }
 
 // 新增日志项
@@ -83,7 +83,7 @@ func (l *Log) cut(index int) {
 	if index <= l.startIndex() || index > l.lastIndex() {
 		return
 	}
-	l.Log = l.slice(index, l.lastIndex()+1)
+	l.Log = l.slice(index)
 	l.Index = index
 }
 

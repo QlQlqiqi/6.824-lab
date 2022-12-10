@@ -36,15 +36,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	reply.VoteGranted = false
-	reply.Term = maxInt(args.Term, rf.currentTerm)
-
 	// for all servers
 	if args.Term > rf.currentTerm {
 		rf.newTermL(args.Term)
-	}
-	if args.Term < rf.currentTerm {
-		return
 	}
 
 	upToDate := args.LastLogTerm > rf.log.lastTerm() ||
@@ -52,12 +46,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	DPrintf("%v: RequestVote up-to-date %v args %v\n", rf.me, upToDate, *args)
 
-	if (rf.votedFor == -1 || rf.votedFor == args.CandidateId) && upToDate {
+	if args.Term < rf.currentTerm {
+		reply.VoteGranted = false
+	} else if upToDate && (rf.votedFor == -1 || rf.votedFor == args.CandidateId) {
+		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
 		rf.persistL()
 		rf.setElectionTimeL()
-		reply.VoteGranted = true
+	} else {
+		reply.VoteGranted = false
 	}
+	reply.Term = rf.currentTerm
 }
 
 // 向 peer 发送投票
@@ -82,13 +81,14 @@ func (rf *Raft) tick() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	DPrintf("%v: tick state %v\n", rf.me, rf.state)
+	//DPrintf("%v: tick state %v\n", rf.me, rf.state)
 
 	// 如果是 leader，重置超时选举时间
 	if rf.state == leader {
 		rf.setElectionTimeL()
 		rf.sendAppendEntriesAllL(true)
-	} else if time.Now().After(rf.electionTime) {
+	}
+	if time.Now().After(rf.electionTime) {
 		// 如果超时，则重置超时时间，并开始新的选举
 		rf.setElectionTimeL()
 		rf.startElectionL()
@@ -158,7 +158,7 @@ retry:
 	// for all servers
 	if reply.Term > rf.currentTerm {
 		rf.newTermL(reply.Term)
-		return
+		//return
 	}
 	// 投票成功
 	if reply.VoteGranted {
@@ -166,8 +166,7 @@ retry:
 		// 在该 term 内超过半数同意
 		// peers 为奇数
 		if rf.currentTerm == reply.Term &&
-			*voteNum > len(rf.peers)/2 &&
-			rf.state == candidate {
+			*voteNum > len(rf.peers)/2 {
 			rf.becomeLeaderL()
 			rf.sendAppendEntriesAllL(true)
 		}
@@ -180,7 +179,7 @@ func (rf *Raft) newTermL(term int) {
 	rf.state = follower
 	rf.votedFor = -1
 	rf.persistL()
-	rf.setElectionTimeL()
+	//rf.setElectionTimeL()
 	DPrintf("%v: start new term: %v\n", rf.me, rf.currentTerm)
 }
 
@@ -200,6 +199,7 @@ func (rf *Raft) becomeLeaderL() {
 	// 初始化 nextIndex 和 matchIndex
 	for peer := range rf.peers {
 		rf.nextIndex[peer] = rf.log.lastIndex() + 1
-		rf.matchIndex[peer] = maxInt(rf.matchIndex[peer], rf.log.startIndex())
+		rf.matchIndex[peer] = rf.log.startIndex()
+		//rf.matchIndex[peer] = maxInt(rf.matchIndex[peer], rf.log.startIndex())
 	}
 }

@@ -71,11 +71,16 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
-	electionTime          time.Time
-	state                 int
-	cond                  *sync.Cond
-	applyCh               chan ApplyMsg
-	waitingNoticeSnapshot *ApplyMsg // 告诉 server/tester snapshot 相关信息
+	electionTime time.Time
+	state        int
+	cond         *sync.Cond
+	applyCh      chan ApplyMsg
+
+	// 告诉 server/tester snapshot 相关信息
+	waitingNoticeSnapshot *ApplyMsg
+	//waitingSnapshot       []byte
+	//waitingIndex          int
+	//waitingTerm           int
 
 	// persistent state on all servers
 	currentTerm int
@@ -214,20 +219,19 @@ func (rf *Raft) killed() bool {
 // for any long-running work.
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{
-		mu:           &sync.Mutex{},
-		peers:        peers,
-		persister:    persister,
-		me:           me,
-		dead:         0,
-		electionTime: time.Now(),
-		applyCh:      applyCh,
-		currentTerm:  0,
-		votedFor:     -1,
-		log:          *mkLogEmpty(),
-		snapshot:     make([]byte, 0),
-		state:        follower,
-		nextIndex:    make([]int, len(peers)),
-		matchIndex:   make([]int, len(peers)),
+		mu:          &sync.Mutex{},
+		peers:       peers,
+		persister:   persister,
+		me:          me,
+		dead:        0,
+		applyCh:     applyCh,
+		currentTerm: 0,
+		votedFor:    -1,
+		log:         *mkLogEmpty(),
+		snapshot:    make([]byte, 0),
+		state:       follower,
+		nextIndex:   make([]int, len(peers)),
+		matchIndex:  make([]int, len(peers)),
 	}
 	rf.cond = sync.NewCond(rf.mu)
 	rf.setElectionTimeL()
@@ -235,6 +239,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	rf.lastApplied = rf.log.startIndex()
+	rf.commitIndex = rf.log.startIndex()
 
 	DPrintf("\n\n%v: (re)boot log is: \n\n\n", rf.me, rf.log)
 

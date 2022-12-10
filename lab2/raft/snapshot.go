@@ -21,7 +21,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	defer rf.mu.Unlock()
 
 	reply.Term = maxInt(rf.currentTerm, args.Term)
-	if args.Term < rf.currentTerm || args.LastIncludedIndex <= rf.log.startIndex() {
+	if args.Term < rf.currentTerm || args.LastIncludedIndex <= rf.log.startIndex() || rf.state == leader {
 		return
 	}
 
@@ -65,6 +65,12 @@ func (rf *Raft) sendSnapshotL(peer int) {
 	retry:
 		cnt++
 		var reply InstallSnapshotReply
+		rf.mu.Lock()
+		if rf.state != leader {
+			rf.mu.Unlock()
+			return
+		}
+		rf.mu.Unlock()
 		ok := rf.sendInstallSnapshot(peer, &args, &reply)
 		if !ok && cnt < rpcRetryTimes {
 			time.Sleep(rpcRetryInterval)
@@ -75,10 +81,10 @@ func (rf *Raft) sendSnapshotL(peer int) {
 		DPrintf("%v: InstallSnapshotReply from %v: %v\n", rf.me, peer, reply)
 		if reply.Term > rf.currentTerm {
 			rf.newTermL(reply.Term)
-		} else {
+		} else if reply.Term == rf.currentTerm && rf.state == leader {
 			rf.nextIndex[peer] = args.LastIncludedIndex + 1
 			rf.matchIndex[peer] = args.LastIncludedIndex
-			rf.sendAppendEntriesL(peer)
+			rf.sendAppendEntriesL(peer, false)
 		}
 	}()
 }
