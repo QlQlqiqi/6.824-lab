@@ -4,5 +4,5 @@
 
 [lab2: Raft 2021](./lab2)
 
-[lab3: Raft 2021](./lab3)
+[lab3: kvServer 2021](./lab3)
 
