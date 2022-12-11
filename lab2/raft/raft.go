@@ -56,6 +56,11 @@ type ApplyMsg struct {
 	Snapshot      []byte
 	SnapshotTerm  int
 	SnapshotIndex int
+
+	// For lab3
+	// 如果是日志类型的，则 Type 为 1
+	// 否则为 0
+	Type int
 }
 
 // Raft
@@ -277,6 +282,7 @@ func (rf *Raft) applier() {
 			// 应用并向 applyCh 写入日志
 			rf.lastApplied++
 			applyMsg := ApplyMsg{
+				Type:         1,
 				CommandValid: true,
 				Command:      rf.log.entry(rf.lastApplied).Command,
 				CommandIndex: rf.lastApplied,
@@ -288,6 +294,7 @@ func (rf *Raft) applier() {
 			rf.mu.Unlock()
 			// 这块不能用 goroutine 去发送数据，否则会导致 goroutine 数量过多而 fail
 			rf.applyCh <- applyMsg
+			//fmt.Printf("apply: %v\n", applyMsg)
 			rf.mu.Lock()
 		} else {
 			rf.cond.Wait()

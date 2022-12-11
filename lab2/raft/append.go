@@ -2,6 +2,7 @@ package raft
 
 import (
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -79,22 +80,36 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		i := 0
 		for ; i < len(entries) && i+args.PrevLogIndex+1 <= rf.log.lastIndex(); i++ {
 			entry := rf.log.entry(i + args.PrevLogIndex + 1)
-			// lab2 中 Command 都是非 struct，所以不用处理 struct 情况
-			if entries[i].Term != entry.Term || entries[i].Command != entry.Command {
+			// term 不一样则日志不一样
+			if entries[i].Term != entry.Term {
 				break
 			}
-			//t1 := reflect.TypeOf(entries[i].Command)
-			//t2 := reflect.TypeOf(entry.Command)
-			//if t1.Kind() != t2.Kind() {
-			//	break
-			//}
-			//if t1.Kind().String() != "struct" {
-			//	if entries[i].Command != entry.Command {
-			//		break
-			//	}
-			//} else {
-			//	// struct 情况
-			//}
+			type1 := reflect.TypeOf(entries[i].Command).Kind().String()
+			type2 := reflect.TypeOf(entry.Command).Kind().String()
+			// type 不一样则日志不一样
+			if type1 != type2 {
+				break
+			}
+			// 如果不是结构体就直接比较
+			if type1 != "struct" {
+				// lab2 中 Command 都是非 struct
+				if entries[i].Command != entry.Command {
+					break
+				}
+			} else if type1 == "Op" {
+				// @see 6.824/kvraft
+				value1 := reflect.ValueOf(entries[i].Command)
+				value2 := reflect.ValueOf(entry.Command)
+				// 只比较 Id
+				// lab3 中日志类型都是 Op
+				if value1.FieldByName("Id") != value2.FieldByName("Id") ||
+					value1.FieldByName("ClientId") != value2.FieldByName("ClientId") {
+					break
+				}
+			} else {
+				// 否则认为不一样
+				break
+			}
 		}
 		// 曾经已经执行的旧的 appendEntries，即：此时的 log 包含 entries 中所有的日志项
 		if i == len(entries) {
