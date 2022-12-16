@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"time"
 )
 
 type asd struct {
@@ -48,6 +49,19 @@ func main() {
 	//	time.Sleep(100 * time.Millisecond)
 	//	fmt.Println(1)
 	//}
+	ch := make(chan int)
+	go func() {
+		time.Sleep(1500 * time.Millisecond)
+		ch <- 1
+	}()
+	tickTimer := time.NewTicker(1 * time.Second)
+	select {
+	case c := <-ch:
+		fmt.Println(c)
+	case <-tickTimer.C:
+		fmt.Println("over")
+	}
+	fmt.Println(11111)
 	a := asd{
 		a: 1,
 	}
@@ -61,6 +75,15 @@ func main() {
 	arr = append(arr, 1)
 	arr = arr[:0]
 	fmt.Println(arr)
+	defer func() {
+		fmt.Println(111)
+	}()
+	defer func() {
+		fmt.Println(222)
+	}()
+	defer func() {
+		fmt.Println(333)
+	}()
 	//a := asd{
 	//	c: "12",
 	//}

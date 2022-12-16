@@ -209,16 +209,18 @@ func (rf *Raft) sendAppendEntriesL(peer int, heartbeats bool) {
 		rf.mu.Unlock()
 		var reply AppendEntriesReply
 		ok := rf.sendAppendEntries(peer, &args, &reply)
-		if ok {
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
-			if rf.state == leader {
-				rf.processAppendReplyL(peer, &args, &reply)
+		if !ok {
+			if cnt < rpcRetryTimes {
+				time.Sleep(rpcRetryInterval)
+				// 如果 rpc 失败，需要立刻重新发送
+				goto retry
 			}
-		} else if cnt < rpcRetryTimes {
-			time.Sleep(rpcRetryInterval)
-			// 如果 rpc 失败，需要立刻重新发送
-			goto retry
+			return
+		}
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+		if rf.state == leader {
+			rf.processAppendReplyL(peer, &args, &reply)
 		}
 	}()
 }

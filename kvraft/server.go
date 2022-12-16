@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const WAITING_TIMEOUT = 5 * time.Second
+const WAITING_TIMEOUT = 10 * time.Second
 
 type Op struct {
 	// Your definitions here.
@@ -36,6 +36,7 @@ type KVServer struct {
 	rf      *raft.Raft
 	applyCh chan raft.ApplyMsg
 	dead    int32 // set by Kill()
+	//cond    *sync.Cond
 
 	maxraftstate int // snapshot if log grows this big
 
@@ -44,6 +45,14 @@ type KVServer struct {
 	// 记录客户端已经 committed 过的最大的 id，clientId->Id
 	// 因为 id 对每个的 client 来说都是递增的
 	lastCommittedId map[int64]int
+}
+
+// 检查是否为 leader
+func (kv *KVServer) CheckLeader(args *CheckLeaderArgs, reply *CheckLeaderReply) {
+	term, isLeader := kv.rf.GetState()
+	reply.IsLeader = isLeader
+	reply.Term = term
+	reply.LeaderIndex = kv.me
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -55,7 +64,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 	reply.ClientId = args.ClientId
 	reply.Id = args.Id
-	reply.LeaderIdx = -1
 	reply.Err = ErrWrongLeader
 	reply.Value = ""
 	// 如果不是 leader，拒绝
@@ -77,7 +85,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// 等待 WAITING_TIMEOUT，超时则认为是错误的 leader（可能因为这个 leader 断开连接了）
 	t := time.Now()
 	for time.Since(t) < WAITING_TIMEOUT {
-		time.Sleep(10 * time.Millisecond)
 		kv.mu.Lock()
 		// 检查状态
 		_, isLeader := kv.rf.GetState()
@@ -117,7 +124,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 	reply.ClientId = args.ClientId
 	reply.Id = args.Id
-	reply.LeaderIdx = -1
 	// 如果不是 leader，拒绝
 	_, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
@@ -139,7 +145,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// 等待 WAITING_TIMEOUT，超时则认为是错误的 leader（可能因为这个 leader 断开连接了）
 	t := time.Now()
 	for time.Since(t) < WAITING_TIMEOUT {
-		time.Sleep(10 * time.Millisecond)
 		kv.mu.Lock()
 		// 检查状态
 		_, isLeader := kv.rf.GetState()
@@ -171,11 +176,13 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 // about this, but it may be convenient (for example)
 // to suppress debug output from a Kill()ed instance.
 func (kv *KVServer) Kill() {
-	atomic.StoreInt32(&kv.dead, 1)
-	kv.rf.Kill()
-	// Your code here, if desired.
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
+
+	kv.rf.Kill()
+	atomic.StoreInt32(&kv.dead, 1)
+	//kv.cond.Broadcast()
+	//fmt.Printf("server %v: kill\n", kv.me)
 	DPrintf("server %v: kill\n", kv.me)
 	DPrintf("server %v: db is: %v\n", kv.me, kv.db)
 	DPrintf("server %v: lastCommittedId is: %v\n", kv.me, kv.lastCommittedId)
@@ -205,11 +212,14 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	labgob.Register(Op{})
 
 	kv := new(KVServer)
+	kv.mu = sync.Mutex{}
+	//kv.cond = sync.NewCond(&kv.mu)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 	kv.db = make(map[string]string)
 	kv.lastCommittedId = make(map[int64]int)
 	//kv.readPersistSnapshotL(persister.ReadSnapshot())
+	//fmt.Println("StartKVServer start")
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
@@ -222,9 +232,22 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 // 监听来自 raft applyCh 提交的日志
 func (kv *KVServer) receiveRaftCommit(persister *raft.Persister) {
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+
+	tickTimer := time.NewTicker(10 * time.Millisecond)
 	for !kv.killed() {
-		msg := <-kv.applyCh
+		kv.mu.Unlock()
+		var msg raft.ApplyMsg
+		select {
+		case msg = <-kv.applyCh:
+		case <-tickTimer.C:
+		}
+		//msg := <-kv.applyCh
 		kv.mu.Lock()
+		if kv.killed() {
+			break
+		}
 		DPrintf("server %v: receive raft commit msg: %v\n", kv.me, msg)
 		// 不接受 CommandValid 为 false 的日志
 		//if !msg.CommandValid {
@@ -234,12 +257,12 @@ func (kv *KVServer) receiveRaftCommit(persister *raft.Persister) {
 		if msg.SnapshotValid {
 			DPrintf("server %v: receive raft commit snapshot\n", kv.me)
 			if msg.Snapshot == nil || len(msg.Snapshot) == 0 {
-				kv.mu.Unlock()
+				//kv.mu.Unlock()
 				continue
 			}
 			kv.readPersistSnapshotL(msg.Snapshot)
 			kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot)
-			kv.mu.Unlock()
+			//kv.mu.Unlock()
 		} else if msg.CommandValid {
 			// 日志
 			//DPrintf("receive raft commit: %v\n", msg)
@@ -247,7 +270,7 @@ func (kv *KVServer) receiveRaftCommit(persister *raft.Persister) {
 			DPrintf("server %v: receive raft commit entry: %v\n", kv.me, applyMsgToString(msg))
 			// 如果之前已经执行过了，则不再应用到 db 中
 			if kv.lastCommittedId[cmd.ClientId] >= cmd.Id {
-				kv.mu.Unlock()
+				//kv.mu.Unlock()
 				continue
 			}
 			if cmd.Op == "Append" {
@@ -266,9 +289,12 @@ func (kv *KVServer) receiveRaftCommit(persister *raft.Persister) {
 				kv.persistSnapshotL(msg.CommandIndex)
 				DPrintf("server %v: end to compress log\n", kv.me)
 			}
-			kv.mu.Unlock()
+			//kv.mu.Unlock()
+		} else {
+			//kv.cond.Wait()
 		}
 	}
+	//fmt.Println("receiveRaftCommit over")
 }
 
 // 将 index of log 之前的 kv 状态保存成快照给 raft
@@ -323,6 +349,6 @@ func getArgsToString(cmd interface{}) string {
 		(cmd).(GetArgs).ClientId, (cmd).(GetArgs).Key) + " "
 }
 func getReplyToString(cmd interface{}) string {
-	return fmt.Sprintf("id: %v clientId: %v value: %v leaderIdx: %v err: %v", (cmd).(GetReply).Id,
-		(cmd).(GetReply).ClientId, (cmd).(GetReply).Value, (cmd).(GetReply).LeaderIdx, (cmd).(GetReply).Err) + " "
+	return fmt.Sprintf("id: %v clientId: %v value: %v err: %v", (cmd).(GetReply).Id,
+		(cmd).(GetReply).ClientId, (cmd).(GetReply).Value, (cmd).(GetReply).Err) + " "
 }

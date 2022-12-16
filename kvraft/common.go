@@ -32,8 +32,6 @@ type PutAppendReply struct {
 	// 发送的 client
 	// @see PutAppendArgs ClientId
 	ClientId int64
-	// server 可能知道 leader 是谁，-1 代表不知道
-	LeaderIdx int
 }
 
 type GetArgs struct {
@@ -55,6 +53,12 @@ type GetReply struct {
 	// 发送的 client
 	// @see PutAppendArgs ClientId
 	ClientId int64
-	// server 可能知道 leader 是谁，-1 代表不知道
-	LeaderIdx int
+}
+
+type CheckLeaderArgs struct{}
+
+type CheckLeaderReply struct {
+	IsLeader    bool
+	Term        int
+	LeaderIndex int
 }

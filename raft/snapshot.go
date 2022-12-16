@@ -87,9 +87,13 @@ func (rf *Raft) sendSnapshotL(peer int) {
 		}
 		rf.mu.Unlock()
 		ok := rf.sendInstallSnapshot(peer, &args, &reply)
-		if !ok && cnt < rpcRetryTimes {
-			time.Sleep(rpcRetryInterval)
-			goto retry
+		if !ok {
+			if cnt < rpcRetryTimes {
+				time.Sleep(rpcRetryInterval)
+				// 如果 rpc 失败，需要立刻重新发送
+				goto retry
+			}
+			return
 		}
 		rf.mu.Lock()
 		defer rf.mu.Unlock()

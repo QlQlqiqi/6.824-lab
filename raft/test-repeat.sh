@@ -6,7 +6,7 @@ cat /dev/null > out.log
 #  go test -run 2C -race >> out.log
 #done
 
-for ((i = 0; i < 1; i++));do
+for ((i = 0; i < 5; i++));do
   go test -run 2D -race >> out.log
 done
 

@@ -2,7 +2,6 @@ package kvraft
 
 import (
 	"6.824/labrpc"
-	"time"
 )
 import "crypto/rand"
 import "math/big"
@@ -55,7 +54,7 @@ func (ck *Clerk) Get(key string) string {
 	leaderIdx := ck.leaderIdx
 	// 不清楚当前 leader 是谁，则随机挑选一个
 	if ck.leaderIdx == -1 {
-		leaderIdx = ck.getRandomServerIdx()
+		leaderIdx = ck.getServerIdx()
 	}
 	ck.opId++
 	args := &GetArgs{
@@ -64,42 +63,22 @@ func (ck *Clerk) Get(key string) string {
 		Key:      key,
 	}
 sendOp:
-	time.Sleep(10 * time.Millisecond)
 	reply := &GetReply{}
 	DPrintf("client: Get to server %v\n", leaderIdx)
 	ok := ck.sendGet(leaderIdx, args, reply)
-	// 请求超时，则换一个 server 继续请求
-	if !ok {
-		leaderIdx = ck.getRandomServerIdx()
-		goto sendOp
-	}
 	// 错误的回复
 	if reply.Id != args.Id || reply.ClientId != args.ClientId {
 		goto sendOp
 	}
 	DPrintf("Get:  func reply: %v\n", getReplyToString(*reply))
+	if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
+		return reply.Value
+	}
 	// 请求失败，对方不是 leader，重新请求
 	if reply.Err == ErrWrongLeader {
-		// 对方知道 leader 是谁
-		if reply.LeaderIdx != -1 {
-			leaderIdx = reply.LeaderIdx
-		} else {
-			leaderIdx = ck.getRandomServerIdx()
-		}
-		goto sendOp
+		leaderIdx = ck.getServerIdx()
 	}
-	ck.leaderIdx = leaderIdx
-	var value = ""
-	// 不存在该 key
-	if reply.Err == ErrNoKey {
-		value = ""
-	}
-	// 请求成功
-	if reply.Err == OK {
-		value = reply.Value
-		return value
-	}
-	return value
+	goto sendOp
 }
 
 // 向 servers[idx] 发送 Get 请求
@@ -120,7 +99,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	leaderIdx := ck.leaderIdx
 	// 不清楚当前 leader 是谁，则随机挑选一个
 	if ck.leaderIdx == -1 {
-		leaderIdx = ck.getRandomServerIdx()
+		leaderIdx = ck.getServerIdx()
 	}
 	ck.opId++
 	args := &PutAppendArgs{
@@ -131,30 +110,23 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Op:       op,
 	}
 sendOp:
-	time.Sleep(10 * time.Millisecond)
 	reply := &PutAppendReply{}
 	DPrintf("client: PutAppend to server %v\n", leaderIdx)
 	ok := ck.sendPutAppend(leaderIdx, args, reply)
-	// 请求超时，则换一个 server 继续请求
-	if !ok {
-		leaderIdx = ck.getRandomServerIdx()
-		goto sendOp
-	}
 	// 错误的回复
 	if reply.Id != args.Id || reply.ClientId != args.ClientId {
 		goto sendOp
 	}
+	// 请求成功
+	if ok && reply.Err == OK {
+		ck.leaderIdx = leaderIdx
+		return
+	}
 	// 请求失败，对方不是 leader，重新请求
 	if reply.Err == ErrWrongLeader {
-		// 对方知道 leader 是谁
-		if reply.LeaderIdx != -1 {
-			leaderIdx = reply.LeaderIdx
-		} else {
-			leaderIdx = ck.getRandomServerIdx()
-		}
-		goto sendOp
+		leaderIdx = ck.getServerIdx()
 	}
-	ck.leaderIdx = leaderIdx
+	goto sendOp
 	// 不存在该 key，更换 op（因为 append 的 key 不存在）
 	// 事实上不存在该情况，server 默认处理了
 	//if reply.Err == ErrNoKey {
@@ -162,7 +134,6 @@ sendOp:
 	//	args.Op = "Put"
 	//	goto sendOp
 	//}
-	// 请求成功
 }
 
 // 向 servers[idx] 发送 PutAppend 请求
@@ -177,7 +148,35 @@ func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "Append")
 }
 
-// 随机获取一个 server index
-func (ck *Clerk) getRandomServerIdx() int {
-	return int(nrand() % int64(len(ck.servers)))
+// 获取一个 server index
+func (ck *Clerk) getServerIdx() int {
+retry:
+	DPrintf("Checking .. .. OneLeader\n")
+	args := &CheckLeaderArgs{}
+	reply := make([]CheckLeaderReply, len(ck.servers))
+	//leaders := make([]int, len(ck.servers))
+	leaders := make(map[int][]int)
+	for si := 0; si < len(ck.servers); si++ {
+		ok := ck.servers[si].Call("KVServer.CheckLeader", args, &reply[si])
+		if ok && reply[si].IsLeader {
+			t := reply[si].Term
+			leaders[t] = append(leaders[t], si)
+		}
+	}
+	lastTermWithLeader := -1
+	for t, ls := range leaders {
+		if len(ls) > 1 {
+			DPrintf("Waring: There are two leader in term %d\n", t)
+			goto retry
+		}
+
+		if t > lastTermWithLeader {
+			lastTermWithLeader = t
+		}
+	}
+
+	if len(leaders) != 0 {
+		return leaders[lastTermWithLeader][0]
+	}
+	goto retry
 }

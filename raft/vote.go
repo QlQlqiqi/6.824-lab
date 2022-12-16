@@ -69,15 +69,16 @@ func (rf *Raft) sendRequestVote(peer int, args *RequestVoteArgs, reply *RequestV
 // The ticker go routine starts a new election if this peer hasn't received
 // heartbeats recently.
 func (rf *Raft) ticker() {
-	for rf.killed() == false {
+	var idx = 0
+	for !rf.killed() {
 		// 这里的 tick 执行频率不得小于 heartbeats 执行频率
-		rf.tick()
+		rf.tick(idx)
 		time.Sleep(tickerInterval * time.Millisecond)
 	}
 }
 
 // ticker 每次执行的函数
-func (rf *Raft) tick() {
+func (rf *Raft) tick(idx int) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -86,7 +87,10 @@ func (rf *Raft) tick() {
 	// 如果是 leader，重置超时选举时间
 	if rf.state == leader {
 		rf.setElectionTimeL()
-		rf.sendAppendEntriesAllL(true)
+		// 每 4 次 tick 发送一次心跳
+		if idx%4 == 0 {
+			rf.sendAppendEntriesAllL(true)
+		}
 	}
 	if time.Now().After(rf.electionTime) {
 		// 如果超时，则重置超时时间，并开始新的选举

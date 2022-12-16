@@ -147,7 +147,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	}
 	defer rf.persistL()
 	defer rf.persistSnapshotL()
-	
+
 	DPrintf("%v: log is %v\n", rf.me, rf.log)
 	rf.log.cut(index)
 	rf.snapshot = snapshot
@@ -202,8 +202,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 // confusing debug output. any goroutine with a long-running loop
 // should call killed() to check whether it should stop.
 func (rf *Raft) Kill() {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	atomic.StoreInt32(&rf.dead, 1)
-	// Your code here, if desired.
 	rf.signalApplierL()
 }
 
@@ -264,9 +266,7 @@ func (rf *Raft) applier() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if rf.lastApplied < rf.log.startIndex() {
-		rf.lastApplied = rf.log.startIndex()
-	}
+	rf.lastApplied = maxInt(rf.lastApplied, rf.log.startIndex())
 
 	for !rf.killed() {
 		// 发送 snapshot
